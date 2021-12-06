@@ -1,0 +1,458 @@
+---
+title: "R Notebook"
+output: html_notebook
+author : "Mohammad Erwinsyah Hartono"
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+options(scipen = 999)
+```
+
+```{r}
+df = read.csv('train.csv')
+head(df)
+```
+
+# 1. Start with the target
+Lakukan analisis univariat terhadap variabel target, yakni SalePrice dan deskripsikan apa saja insight yang bisa didapat.
+```{r}
+#SalePrice Distribution Plot
+df %>% ggplot(aes(x= SalePrice)) + 
+  geom_histogram(aes(y=..density..), alpha = 0.5) +
+  geom_density(col = 'red') +
+  theme_minimal() +
+  labs(title = 'Distribution of Sale Price Variable from Dataset',
+       subtitle = 'Distribution shows Peak, Positive Skewness',
+       caption = 'Data should be scaled and transformed to fix the skew',
+       x = 'Sale Price',
+       y = 'Frequency')
+```
+```{r}
+#Statistical Summary of SalePrice
+df %>% select(SalePrice) %>% summary()
+```
+Nampak Positive Skew dan Long Tail
+
+Rumah termurah terjual dengan harga $34,900 dan yang paling mahal dengan harga $755,000
+
+Rata-rata dari harga jual rumah adalah $180,921, sedangkan median harga rumah adalah $163,000
+
+Distribusi harga pada umumnya dari $100,000 hingga $250,000
+
+Sale Price memuncak sekitar $160,000 kemudian mulai menurun secara konsisten hingga harga $300,000, dan mulai membentuk ekor panjang diatas $400,000 yang berakhir di sekitar $750,000 sesuai dengan grafik dan rangkuman statistik  
+
+```{r}
+df %>% ggplot(aes(y= SalePrice)) + 
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = 'Distribution of Sale Price Variable from Dataset')
+```
+Menurut distribusi SalePrice, Outlier mulai terbentuk dari harga sekitar $330,000, namun tidak bisa langsung kita buang karena kemungkinan data memang valid, dan Sale Price mungkin masih bisa ditransformasi agar terdistribusi mendekati normal.
+
+# 2. Cari 5 variabel dengan korelasi paling kuat(secara positive ataupun negative) terhadap SalePrice, dan kira-kira apakah hasilnya masuk akal?
+```{r,fig.width=28}
+df = read.csv('train.csv')
+df %>% select_if(is.numeric) %>% cor() %>% corrplot::corrplot(type='lower',method = 'number')
+```
+
+Variable numerik yang memiliki korelasi dengan SalePrice:
+
+- OverallQual (0.79):
+Rates the overall material and finish of the house, (1-10) scale
+Semakin tinggi kualitas bahan rumah semakin mahal, masuk akal.
+```{r}
+#Sale Price in relation to OverAll Quality
+df$OverallQual <- as.factor(df$OverallQual)
+df %>% ggplot(aes(x= OverallQual, y=SalePrice)) +
+  geom_boxplot(alpha=0.2, fill = 'blue') +
+  theme(legend.position="none") +
+  theme_minimal() +
+  stat_summary(fun = median,
+               geom = "line",
+               aes(group = 1),
+               col = "red") +
+  labs(title = 'Sale Price and Overall Quality Relationship from Dataset',
+       subtitle = 'Sale Price relatively increases as Overall Quality of Houses Increases',
+       caption = 'There is a positive Correlation',
+       x = 'Overall Quality',
+       y = 'Sale Price')
+```
+Sale Price naik secara konsisten sesuai dengan overall Quality, kedua variable ini memiliki korelasi yang paling tinggi dbandingkan dengan variable yang lain, sehingga memungkinkan menjadi prediktor yang kuat bagi Sale Price.
+
+Tidak seluruhnya penjualan rumah dengan Overall Quality 10 lebih mahal dari rumah dengan Overall Quality yang lebih rendah, menandakan bahwa banyak faktor lain yang mempengaruhi Sale Price
+
+- GrLivArea (0.71):
+Above grade (ground) living area in square feet
+Semakin luas living area semakin mahal, masuk akal
+```{r}
+#Sale Price in relation to Living Area
+df %>% ggplot(aes(x= GrLivArea, y= SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method=lm,  linetype="dashed",
+             color="darkred", fill="blue") +
+  theme_minimal() +
+  labs(title = 'Sale Price and Ground Living Area Relationship from Ames Dataset',
+       subtitle = 'Sale Price relatively increases as Living Area of Houses Increases',
+       caption = 'There is a positive Correlation',
+       x = 'Ground Living Area',
+       y = 'Sale Price')
+```
+Terdapat beberapa outlier yang menonjol 2 titik di kanan atas dan 2 titik di kanan bawah. 
+2 titik kanan atas masih cukup masuk akal jika kita berasumsi bahwa Sale Price akan menigkat seiring dengan meningkatnya Ground Living Area.
+yang perlu dicatat adalah 2 rumah dengan harga dibawah $200,000 meskipun GrLivArea > 4500
+
+```{r}
+df %>% filter(GrLivArea > 4500, SalePrice < 200000)
+```
+yaitu rumah dengan ID: 524 dan 1299
+
+
+- GarageCars(0.64) & GarageArea(0.62):
+Size of garage in car capacity & Size of garage in square feet
+Semakin luas area garasi, semakin banyak muat mobil semaking mahal, masuk akal.
+GarageCars dan GarageArea memiliki korelasi yang tinggi (0.88), sebaiknya kita memilih salah satu saja untuk dijadikan prediktor agar tidak mengganggu model
+```{r}
+df$GarageCars <- as.factor(df$GarageCars)
+df %>% ggplot(aes(x= GarageCars, y= SalePrice)) +
+  geom_boxplot(alpha = 0.3) +
+  theme_minimal() +
+  labs(x = 'Garage Capacity in Cars',
+       y = 'Sale Price')
+```
+Untuk Garage Cars 0-3 memang berkolerasi positif dengan Sale Price, namun pada Garage Cars 4 Sale Price justru menurun, kemungkinan pada rumah-rumah tersebut harga dipengaruhi oleh faktor lain yang lebih kuat.
+
+```{r}
+df %>% filter(GarageCars == 4)
+```
+Terdapat 5 Observasi dimana GarageCars = 4, jika kita amati GroundLiving Area, pada 3 rumah memang Sale Price (<$200,000) sesuai dengan range Ground Living Area (872, 1344, 1622) yang dimiliki rumah-rumah tersebut. Pada 2 rumah sisanya, memiliki OverAll Quality (5,7) yang cukup masuk akal memiliki SalePrice kurang lebih ($200,000, $260,000). Hal ini menunjukkan bahwa OverAllQual merupakan prediktor yang lebih kuat.
+
+```{r}
+df %>% ggplot(aes(x= GarageArea, y= SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method=lm,  linetype="dashed",
+             color="darkred", fill="blue") +
+  theme_minimal() +
+  labs(x = 'Garage Capacity Area',
+       y = 'Sale Price')
+```
+Terdapat 4 titik Outlier dimana Garage Area Tinggi sekitar 1500+ namun Sale Price hanya 80000-250000
+
+```{r}
+df %>% filter(SalePrice < 300000, GarageArea >1200)
+```
+Pada 3 rumah OverAllQual sekali lagi menjadi prediktor yang lebih kuat dan SalePrice rumah tersebut memang sesuai range OverAllQual.
+Kecuali pada 1 rumah dengan ID: 1299 yang memang kurang masuk akal jika kita lihat prediktor-prediktornya.
+
+- TotalBsmtSF (0.61) & 1stFlrSF (0.61):
+Total square feet of basement area & First Floor square feet
+Seperti halnya GrLivArea, semakin luas area yang dibeli maka akan semakin mahal, masuk akal.
+Total Basement SF dan 1st Floor SF memiliki korelasi yang tinggi (0.82), sebaiknya kita memilih salah satu saja untuk dijadikan prediktor agar tidak mengganggu model
+```{r}
+df %>% ggplot(aes(x= TotalBsmtSF, y= SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method=lm,  linetype="dashed",
+             color="darkred", fill="blue") +
+  theme_minimal() +
+  labs(x = 'Basement Area Square Feet',
+       y = 'Sale Price')
+```
+Terdapat outlier dimana Basement Area > 3000 Square Feet namun SalePrice dibawah 200000
+```{r}
+df %>% filter(TotalBsmtSF > 3000, SalePrice < 200000)
+```
+Rumah ID 524 dan 1299 lagi-lagi menjadi outlier yang tidak mengikuti pola
+
+```{r}
+df %>% ggplot(aes(x= X1stFlrSF, y= SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method=lm,  linetype="dashed",
+             color="darkred", fill="blue") +
+  theme_minimal() +
+  labs(x = '1st Floor Square Feet',
+       y = 'Sale Price')
+```
+Terdapat 2 outlier dimana Basement Area > 3000 Square Feet namun harga dibawah 200000
+```{r}
+df %>% filter(X1stFlrSF > 3000, SalePrice < 200000)
+```
+
+Disini kita menjumpai lagi rumah ID 524 dan 1299 yang sangat jauh dari pola yang didapat dari beberapa perdiktor.
+
+- FullBath(0.56):
+Full bathrooms above grade.
+Cukup masuk akal jika rumah yang memiliki lebih banyak kamar mandi kita asumsikan rumah lebih besar dan mahal.
+
+```{r}
+df$FullBath <- as.factor(df$FullBath)
+df$OverallQual <- as.factor(df$OverallQual)
+df %>% ggplot(aes(x=FullBath, y=GrLivArea, fill=OverallQual)) +
+  geom_boxplot()
+```
+Memang secara umum dapat dilihat meningkatnya GrLivArea mengikuti jumlah FullBath yang dimiliki.
+Dapat dilihat juga kecenderungan rumah yang memiliki OverAllQual tinggi juga memiliki GrLivArea yang lebih tinggi dan memiliki FullBath 2 sampai 3 Bathroom.
+
+```{r}
+#SalePrice dengan FullBath
+df$FullBath <- as.factor(df$FullBath)
+df %>% ggplot(aes(x= FullBath, y= SalePrice)) +
+  geom_boxplot(alpha = 0.3) +
+  theme_minimal() +
+  labs(x = 'Bathrooms',
+       y = 'Sale Price')
+```
+Untuk Bathroom 1-3 memang berkolerasi positif, namun median harga dari rumah dengan 0 FullBathroom (Bathroom lain sebagai penggantinya) lebih tinggi dari rumah 1 bathroom, kemungkinan pada rumah-rumah tersebut harga dipengaruhi oleh faktor lain yang lebih kuat.
+
+- TotRmsAbvGrd (0.53)
+Total rooms above grade (does not include bathrooms)
+Sama halnya dengan FullBath, cukup masuk akal jika kita asumsikan Room lebih banyak > rumah lebih besar > lebih mahal
+```{r}
+#SalePrice dengan TotRmsAbvGrd
+df$TotRmsAbvGrd <- as.factor(df$TotRmsAbvGrd)
+df %>% ggplot(aes(x= TotRmsAbvGrd, y= SalePrice)) +
+  geom_boxplot(alpha = 0.3) +
+  theme_minimal() +
+  labs(x = 'Total Rooms',
+       y = 'Sale Price')
+```
+Untuk total rooms 3-11 median Sale Price terus meningkat namun pada rumah dengan 12 total room median harga menurun drastis mencapai 200000, kemungkinan pada rumah-rumah tersebut harga dipengaruhi oleh faktor lain yang lebih kuat.
+
+```{r}
+df %>% filter(TotRmsAbvGrd == 12) %>% select(Id,SalePrice,GrLivArea,OverallQual) %>% arrange(desc(SalePrice))
+```
+
+```{r}
+df %>% filter(TotRmsAbvGrd == 14) %>% select(Id,SalePrice,GrLivArea,OverallQual) %>% arrange(desc(SalePrice))
+```
+Saat kita amati, pada rumah-rumah dengan Total Room 12 dan 14 ternyata cukup didominasi oleh rumah dengan SalePrice rendah dan OverallQual rendah 
+kecuali pada Sale Price rumah ID 1299 yang tidak masuk akal dan tidak mengikuti pola prediktor.
+
+Sekali lagi menunjukkan bahwa OverAllQual kemungkinan adalah prediktor yang lebih kuat.
+
+- YearBuilt(0.52) & YearRemodAdd(0.51)
+Original construction date & Remodel date (same as construction date if no remodeling or additions)
+Masuk akal jika diasumsikan Rumah yang baru dibangun/remodel akan lebih mahal.
+Namun korelasi dengan SalePrice tidak terlalu kuat kecuali pada 1990-2010
+```{r,fig.width=20}
+df$YearBuilt <- as.factor(df$YearBuilt)
+df %>% ggplot(aes(x= YearBuilt, y= SalePrice)) +
+  geom_boxplot() +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = 'Year Built',
+       y = 'Sale Price')
+```
+Secara umum dapat dilihat sedikit kenaikan Sale Price pada rumah-rumah dengan YearBuilt yang lebih baru, namun ada beberapa peak seperti di tahun 1880, 1892, 1930an, dan 1981.
+Hal ini bisa disebabkan oleh terpencarnya data secara luas sehingga dsitribusi SalePrice per tahun bisa berubah bentuk karena sedikitnya penjualan.
+
+```{r}
+df %>% filter(YearBuilt == 1892) %>% select(Id,SalePrice,GrLivArea,OverallQual) %>% arrange(desc(SalePrice))
+```
+Sebagai contoh pada rumah dengan YearBuilt 1892, hanya terdapat dua observasi dengan rentang Sale Price 107500 - 475000, sehingga bentukan boxplot sangat panjang
+
+```{r}
+df %>%  filter(YearBuilt == 1934) %>% select(Id,SalePrice,GrLivArea,OverallQual) %>% arrange(desc(SalePrice))
+```
+Begitu juga dengan Year Built 1934. Dari pengamatan diatas sekali lagi terlihat bahwa OverAllQual berkorelasi kuat dengan SalePrice
+
+```{r,fig.dim=10}
+df$YearRemodAdd <- as.factor(df$YearRemodAdd)
+df %>% ggplot(aes(x= YearRemodAdd, y= SalePrice)) +
+  geom_boxplot() +
+  theme_minimal() +
+  coord_flip()
+  labs(x = 'Year Remod',
+       y = 'Sale Price')
+```
+Secara umum semakin baru rumah remodel semakin mahal Sale Price. Year Remodel lebih cocok untuk menampilkan kenaikan Sale Price seiring dengan semakin barunya remodel.
+Kenaikan Sale Price nampak drastis pada rumah dengan Remodel tahun 2001-2010 dibandingkan dengan tahun-tahun sebelumnya.
+
+# 3. It is never hurt to test basic knowledge.
+Ada pandangan bahwa OverallQual rendah memiliki kecenderungan harga yang lebih rendah, dan rumah dengan OverallQual tinggi memiliki kecenderungan harga yang lebih tinggi. Lakukan analisis terhadp hubungan OverallQual dan SalePrice.
+```{r}
+#Sale Price in relation to OverAll Quality
+df$OverallQual <- as.factor(df$OverallQual)
+df %>% ggplot(aes(x= OverallQual, y=SalePrice)) +
+  geom_boxplot(alpha = 0.6, fill = 'blue') +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  theme(legend.position="none") +
+  theme_minimal() +
+  stat_summary(fun = median,
+               geom = "line",
+               aes(group = 1),
+               col = "red") +
+  labs(title = 'Sale Price and Overall Quality Relationship from Dataset',
+       subtitle = 'Sale Price relatively increases as Overall Quality of Houses Increases',
+       caption = 'There is a positive Correlation',
+       x = 'Overall Quality',
+       y = 'Sale Price')
+```
+- Sale Price naik secara konsisten sesuai dengan overall Quality, kedua variable ini memiliki korelasi yang paling tinggi dbandingkan dengan variable yang lain, sehingga memungkinkan menjadi prediktor yang kuat bagi Sale Price.
+
+- Tidak seluruhnya penjualan rumah dengan Overall Quality 10 lebih mahal dari rumah dengan Overall Quality yang lebih rendah, menandakan adanya faktor lain yang mempengaruhi Sale Price
+
+- Dari pengamatan-pengamatan sebelumnya OverAllQual cenderung menjadi variable yang kuat hubungannya dengan Sale Price dibandingkan dengan variable yang lain.
+
+- Median SalePrice bagi rumah dengan OverAllQual 1 hingga 7 adalah <= $200,000
+
+- Pada rumah dengan OverAllQual 8-10 harga meningkat lumayan tajam
+
+- Tetap terdapat Outlier pada beberapa kategori kemungkinan harga rumah juga dipengaruhi faktor lain 
+
+- Pada umumnya rumah yang terjual memiliki OverAllQual 5-7 dengan count 319-397
+
+
+# 4. Beware of false correlation
+Ada kecenderungan bahwa rumah baru memiliki harga yang lebih tinggi. Akan tetapi, kita tidak boleh gegabah untuk menyimpulkan bahwa rumah baru pasti memiliki harga jual yang lebih tinggi, karena apabila rumah baru yang dibangun tidak baik, tentu harganya juga tidak bisa tinggi. Kira-kira apa hal yang membuat rumah baru memiliki nilai yang lebih tinggi?
+# Hint : Cek korelasi antara YearBuilt dengan prediktor lainnya
+```{r,fig.width=26}
+#Another Look at Correlation Matrix
+df = read.csv('train.csv')
+df %>% select_if(is.numeric) %>% cor() %>% corrplot::corrplot(type='lower',method = 'number')
+```
+- YearBuilt memiliki korelasi positif dengan beberapa variable berikut:
+1. YearRemodAdd (0.59):
+YearRemodAdd adalah tahun remodel rumah, dan akan sama dengan YearBuilt jika tidak ada penambahan/remodel, dan juga kebanyakan YearRemodAdd diadakan relatif baru-baru ini (>1980), mungkin hal itu yang menyebabkan adanya korelasi dengan YearBuilt.
+```{r}
+df %>% ggplot(aes(x=YearBuilt, y=YearRemodAdd)) + 
+  geom_point()
+```
+2. OverAllQual (0.57):
+Jika kita lihat pola pergerakan OverAllQual seiring berjalannya YearBuilt,
+Rumah-rumah yang dibangun lebih baru, menunjukkan OverAllQual yang lebih tinggi,
+Sebagai contoh, Rumah dengan OverAllQual 8 banyak ditemukan diatas tahun 1980, OverAllQual 9 dan 10 diatas tahun 2000, dengan beberapa Outlier
+```{r}
+df$OverallQual <- as.factor(df$OverallQual)
+df %>% ggplot(aes(x=OverallQual, y=YearBuilt)) + 
+  geom_point()
+```
+3. GarageCars(0.54) / GarageArea (0.48):
+Pada YearBuilt 1980-2000 mulai banyak bermunculan rumah dengan GarageCars 3
+Pada YearBuilt diatas 2000 kebanyakan rumah adalah dengan GarageCars 2 dan 3
+```{r}
+df %>% ggplot(aes(x=GarageCars, y=YearBuilt)) + 
+  geom_point()
+```
+4. SalePrice (0.52):
+Harga secara umum mulai naik pada YearBuilt >1980, lalu meningkat cukup tajam pada YearBuilt >2000
+```{r}
+df %>% ggplot(aes(x=YearBuilt, y=SalePrice)) + 
+  geom_point()
+```
+5. FullBath (0.47):
+Persebaran FullBath 1 dan 2 cukup mirip,
+Sedangkan 3 FUllbath mulai banyak ditemukan pada rumah dengan YearBuilt > 1980
+
+```{r}
+df %>% ggplot(aes(x=FullBath, y=YearBuilt)) + 
+  geom_point()
+```
+- Rumah baru memiliki nilai tinggi salah satunya yang utama karena pada umumnya kualitas material dan finishing rumah meningkat,
+- Selain itu kemungkinan juga karena luas Garasi dan jumlah FullBath yang relatif sedikit meningkat kualitas distribusinya seiring dengan YearBuilt.
+
+# 5. Haunted place(?)
+Perhatikan scatter plot berikut
+```{r}
+df %>% ggplot(aes(x=GrLivArea,y=SalePrice)) + geom_point()
+```
+Disebelah kanan, ada dua rumah, yang memiliki GroundLivingArea sangat besar, tetapi SalePrice nya murah. Coba analisis kenapa kedua rumah tersebut murah
+```{r}
+df %>% filter(SalePrice < 200000, GrLivArea>4500)
+```
+- Berdasarkan pengamatan sebelumnya, kedua rumah ini memang tidak mengikuti pola dari variable OverAllQual,GrLivArea,TotalBsmtSF,TotRmsAbvGrd.
+
+- Rumah 524 terjual lebih mahal daripada rumah 1299, kedua rumah memiliki FullBath, TotRoomsAbvGrd, GrLivArea, dan TotalBsmt yang relatif cukup tinggi, yang seharusnya berkorelasi positif dengan SalePrice, kedua rumah bahkan memiliki OverAllQual 10 dimana OverAllQual biasanya menjadi prediktor kuat pada tingginya SalePrice.
+
+- Karena kita sudah melihat korelasi dengan variable numerik yang paling berkorelasi dengan SalePrice, kita bisa melihat variable kategori untuk melihat apakah ada informasi yang menyebabkan rendahnya Sale Price dua rumah diatas.
+
+- Berdasarkan pengamatan variable sekilas, secara umum kedua rumah ini tergolong bagus dan kurang masuk akal kenapa harga jualnya rendah, berikut beberapa variable yang mungkin berpengaruh.
+
+```{r}
+#Neighborhood
+df$Ghost_House = as.factor(ifelse(df$Id==524,"Ghost House",
+                   ifelse(df$Id==1299,"Ghost House","Normal")
+                          ))
+df %>% ggplot(aes(x= Neighborhood, y = SalePrice, color= Ghost_House, fill=Neighborhood)) +
+  coord_flip() +
+  geom_boxplot()
+```
+- Disini dapat dilihat bahwa rumah Neighborhood Edwards umumnya terjual dengan harga $50,000 hingga $200,000 dengan beberapa outlier. 
+- Kemungkinan variable yang paling berpengaruh pada rendahnya harga pada rumah 524 dan 1299 adalah Neighborhoodnya yaitu Neighborhood Edwards.
+
+```{r}
+#Sale Condition
+df %>% ggplot(aes(x= SaleCondition, y = SalePrice, color = Ghost_House)) +
+  geom_jitter(alpha = 0.6)
+```
+
+- Partial SaleCondition memiliki range yang cukup besar. 
+- Salah satu kemungkinan lain rendahnya SalePrice mungkin dikarenakan Rumah baru dan belum selesai complete (Partial Sale Condition, New Sale Type)
+
+```{r}
+#saleType
+df %>% ggplot(aes(x= SaleType, y = SalePrice, color = Ghost_House)) +
+  geom_jitter(alpha = 0.6)
+```
+- SaleType New tidak menunjukkan kecenderungan harga yang lebih rendah
+
+```{r}
+#LandContour
+df %>% ggplot(aes(x= LandContour, y = SalePrice, color = Ghost_House)) +
+  geom_boxplot(alpha = 0.5)
+```
+- LandContour Banked (Quick and significant rise from street grade to building) mungkin memberikan pengaruh pada harga.
+
+```{r}
+#MSZoning
+df %>% ggplot(aes(x= MSZoning, y = SalePrice, color = Ghost_House)) +
+  geom_jitter(alpha = 0.5)
+```
+- MSZoning adalah Klasifikasi zona rumah yang terjual 
+- MSZoning RL (Residential Low Density) tidak menunjukkan kecenderungan harga yang lebih rendah
+
+```{r,fig.width=10}
+#Exterior1st
+df %>% ggplot(aes(x= Exterior1st, y = SalePrice, fill=Exterior1st)) +
+  geom_boxplot()
+```
+- Exterior Cement Board (Rumah 524) tidak menunjukkan pengaruh rendahnya harga, namun Exterior Stucco (Rumah 1299) menunjukkan kecenderungan harga yang sedikit lebih rendah
+
+```{r}
+#Condition1st
+df %>% ggplot(aes(x= Condition1, y = SalePrice, fill=Condition1)) +
+  geom_boxplot()
+```
+- Condition PosN/Near positive off-site feature--park, greenbelt, etc. (Rumah 524) tidak menunjukkan pengaruh rendahnya harga, namun Condition FeedR/Adjacent to feeder street (Rumah 1299) menunjukkan kecenderungan harga yang sedikit lebih rendah
+
+# 6. Freestyle
+Lakukan EDA secara bebas dan sampaikan 1 insight yang sekiranya menarik.
+```{r}
+#Median Sale Price Neighborhood
+df %>% ggplot(aes(x=reorder(Neighborhood,SalePrice), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", alpha= 0.6) +
+  theme_minimal() +
+  coord_flip() +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red")
+```
+- Median dari SalePrice adalah $163,000, berdasarkan grafik kemungkinan ada pengaruh neighborhood dengan Sale Price
+- Pada sebagian Neighborhood (12 of 25), median harga jual dibawah median harga jual keseluruhan
+- 3 Neighborhood dengan SalePrice tertinggi Northridge, Northridge Heights, Stone Brook
+- 3 Neighborhood dengan SalePrice tertinggi Meadow Village, Iowa DOT and Rail Road, Briardale
+
+```{r}
+#Count Neighborhood
+df %>% 
+	group_by(Neighborhood) %>% 
+	summarise(count = n()) %>% 
+	ggplot(aes(x = reorder(Neighborhood,(count)), y = count)) + 
+  geom_bar(stat='identity', alpha=0.6) +
+  theme_minimal() +
+  coord_flip() +
+  geom_text(aes(label = count),nudge_y = 6)
+```
+- Neighborhood dengan jumlah penjualan rumah tertinggi adalah North Ames mencapai 15.4%
+
+
+
+
