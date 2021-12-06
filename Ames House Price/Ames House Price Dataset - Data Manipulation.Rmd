@@ -1,0 +1,69 @@
+
+```{r}
+library(tidyverse)
+train <- read.csv("D:/DS/Dibimbing_DS/train.csv",header = TRUE)
+```
+
+```{r}
+#Soal No. 1
+#Pilih kolom ID, Condition1, OverallCond, YearBuilt, dan FullBath yang mana GrLivArea nya = 1717 atau 2324
+train.select <- train %>% filter(GrLivArea == 1717 | GrLivArea == 2324) %>% select(Id,Condition1,OverallCond,YearBuilt,FullBath)
+```
+
+```{r}
+#Soal No. 2
+#tahun berapa yang paling banyak membangun rumah dimana GarageCond: Garage condition = Ex (Excellent)
+unique(train$GarageCond)
+train.Ex <- train %>% filter(GarageCond == "Ex") #Hanya terdapat 2 observasi dimana GarageCond = Ex, Yearbuilt Tahun 1940 dan 1959
+```
+
+```{r}
+#Soal No. 3
+#penjualan rumah tertinggi pada tahun berapa?
+train.sold <- train %>% group_by(YrSold) %>% summarise(Jumlah.Penjualan = n()) %>% arrange(desc(Jumlah.Penjualan)) #Yrsold Tahun 2009 dengan penjualan 338 kali
+```
+
+```{r}
+#Soal No. 4
+#YearBuilt dan YearRemodAll di tahun yang sama vs tahun berbeda
+train.sameyear <- train %>% filter(YearBuilt == YearRemodAdd) %>% summarise(Penjualan.SameYear = n())
+train.diffyear <- train %>% filter(YearBuilt != YearRemodAdd) %>% summarise(Penjualan.DiffYear = n())
+#Jumlah Penjualan dengan YearBuilt = YearRemodAll lebih banyak (764) vs YearBuilt != YearRemodAll (696)
+```
+
+```{r}
+#Soal No. 5
+#Buat kolom baru dengan nama Usia_Rumah setelah YearRemodeAll
+train <- train %>%  mutate(train, Usia_Rumah = 2021 - YearRemodAdd)
+#Kolom Usia_Rumah menunjukkan Usia rumah sejak remodeling hingga saat ini
+```
+
+```{r}
+#Soal No. 6
+#Buatlah minimal 10 Feature Baru dari kolom YearBuilt, OverallQual, YearRemodAll, YrSold, dan MoSold
+train.fe <- train %>% select(YearBuilt,OverallQual,YearRemodAdd,YrSold,MoSold)
+
+#1 Lama Penjualan sejak remodeling (YrSold - YearRemodAll)
+train.fe <- train.fe %>%  mutate(Sell.Duration.Remodel = YrSold - YearRemodAdd)
+#2 Season Penjualan (Category)
+train.fe <- train.fe %>%  mutate(Season.Sold=cut(MoSold, breaks=c(0,2,5,8,11,12), labels=c("Winter","Spring","Summer","Fall","Winter")))
+#3 Overall Quality (Category)
+train.fe <- train.fe %>%  mutate(Quality.Category=cut(OverallQual, breaks=c(0,4,7,10), labels=c("Poor","Medium","Good")))
+#4 Lama Penjualan (YrSold - YearBuilt)
+train.fe <- train.fe %>%  mutate(Age.Before.Sold = YrSold - YearBuilt)
+#5 Lama Remodel (YearRemodAll - YearBuilt)
+train.fe <- train.fe %>%  mutate(Age.Before.Remodel = YearRemodAdd - YearBuilt)
+#6 Usia_Rumah (2021 - YearBuilt)
+train.fe <- train.fe %>%  mutate(House.Age = 2021 - YearBuilt)
+#7 Usia_Remodel (2021 - YearRemodAdd)
+train.fe <- train.fe %>%  mutate(Remodel.Age = 2021 - YearRemodAdd)
+#8 Usia Penjualan (2021 - YrSold)
+train.fe <- train.fe %>%  mutate(Sell.Age = 2021 - YrSold)
+#9 Quarter Penjualan (Category)
+train.fe <- train.fe %>%  mutate(Quarter.Sold=cut(MoSold, breaks=c(0,3,6,9,12), labels=c("Q1","Q2","Q3","Q4")))
+#10 Year Built (Category)
+train.fe <- train.fe %>%  mutate(House.Built.Century=cut(YearBuilt, breaks=c(1799,1899,1999,2099), labels=c("19th","20th","21st")))
+colSums(is.na(train.fe))
+```
+
+
